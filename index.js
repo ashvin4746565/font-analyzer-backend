@@ -30,35 +30,25 @@ app.get("/fonts", async (req, res) => {
     const html = await response.text();
     const dom = new JSDOM(html);
 
-    const styleLinks = Array.from(dom.window.document.querySelectorAll('link[rel="stylesheet"]'));
-    const inlineStyles = Array.from(dom.window.document.querySelectorAll("style"));
+    const elements = Array.from(dom.window.document.body.querySelectorAll("*"));
+    const fontUsage = {};
 
-    const fonts = new Set();
-
-    // Analyze external stylesheets
-    for (const link of styleLinks) {
-      const href = link.href;
-      if (href) {
-        const cssContent = await fetchCSS(href);
-        const fontMatches = cssContent.match(/@font-face\s*{[^}]*}/gi) || [];
-        fontMatches.forEach((match) => {
-          const fontName = match.match(/font-family:\s*['"]?([^;'"]+)['"]?/i);
-          if (fontName) fonts.add(fontName[1]);
-        });
+    elements.forEach((el) => {
+      const computedStyle = dom.window.getComputedStyle(el);
+      const fontFamily = computedStyle.getPropertyValue("font-family");
+      if (fontFamily) {
+        const normalizedFont = fontFamily.split(",")[0].trim().replace(/['"]/g, "");
+        fontUsage[normalizedFont] = (fontUsage[normalizedFont] || 0) + 1;
       }
-    }
-
-    // Analyze inline styles
-    inlineStyles.forEach((style) => {
-      const cssContent = style.textContent;
-      const fontMatches = cssContent.match(/@font-face\s*{[^}]*}/gi) || [];
-      fontMatches.forEach((match) => {
-        const fontName = match.match(/font-family:\s*['"]?([^;'"]+)['"]?/i);
-        if (fontName) fonts.add(fontName[1]);
-      });
     });
 
-    res.json({ fonts: Array.from(fonts) });
+    const totalElements = elements.length;
+    const fontPercentages = Object.entries(fontUsage).map(([font, count]) => ({
+      font,
+      percentage: ((count / totalElements) * 100).toFixed(2),
+    }));
+
+    res.json({ fonts: fontPercentages });
   } catch (error) {
     console.error("Error analyzing site:", error);
     res.status(500).json({ error: "Unable to analyze the site" });
